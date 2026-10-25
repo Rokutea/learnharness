@@ -23,6 +23,10 @@
  *   asks main to kill the server and quit-and-install. Browser builds:
  *   both absent, the banner never renders.
  *
+ *   window.lh.pickFolder() — course mode (fork, 2026-10-25): the native
+ *   "choose folder" dialog for Settings → Courses; resolves the absolute
+ *   path or null on cancel. Browser builds: absent (type the path).
+ *
  * Channel names are mirrored in electron/main.cjs — keep them in sync.
  */
 const { contextBridge, ipcRenderer } = require("electron");
@@ -71,4 +75,6 @@ contextBridge.exposeInMainWorld("lh", {
 		return () => ipcRenderer.removeListener("lh:update-status", listener);
 	},
 	installUpdate: () => ipcRenderer.send("lh:update-install"),
+	// Course mode (fork, 2026-10-25): native folder picker → absolute path | null.
+	pickFolder: () => ipcRenderer.invoke("lh:pick-folder"),
 });

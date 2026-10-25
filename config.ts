@@ -29,6 +29,9 @@ export const PATHS = {
 	/** Debug artifacts (env-gated): data/debug/provider-events/<chatId>.jsonl
 	 * raw provider stream recordings (src/agent/provider-events.ts). */
 	debug: path.join(DATA_ROOT, "debug"),
+	/** Course mode (fork, 2026-10-25): courses.json + one directory per
+	 *  course (index.json, glossary.md) — src/store/courses.ts. */
+	courses: path.join(DATA_ROOT, "courses"),
 } as const;
 
 // ─── Models ────────────────────────────────────────────────────────────────
@@ -51,6 +54,7 @@ export type ModelRole =
 	| "demoBuilder"
 	| "visualMaker"
 	| "pdfReader"
+	| "glossaryMaker"
 	| "extractor"
 	| "auditor";
 

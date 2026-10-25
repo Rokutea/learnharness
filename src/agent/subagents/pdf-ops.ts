@@ -173,6 +173,34 @@ export async function pdfExtract(filePath: string, pageSpec: string): Promise<st
 	return out.join("\n");
 }
 
+/** Every page's text, line breaks honored (course mode, 2026-10-25): the
+ *  course indexer's reader. Unlike itemsToText (the triage/extract
+ *  format, kept byte-stable for the reader agent), a text item's hasEOL
+ *  becomes a newline, so paragraphs and formulas keep their shape in the
+ *  index and in course_read output. One document open for all pages. */
+export async function pdfPageTexts(filePath: string): Promise<string[]> {
+	const { doc, task } = await openDocument(filePath);
+	try {
+		const out: string[] = [];
+		for (let i = 1; i <= doc.numPages; i++) {
+			const page = await doc.getPage(i);
+			const content = await page.getTextContent();
+			let text = "";
+			for (const it of content.items as unknown[]) {
+				if (!it || typeof it !== "object") continue;
+				const item = it as { str?: unknown; hasEOL?: unknown };
+				if (typeof item.str === "string") text += item.str;
+				if (item.hasEOL === true) text += "\n";
+			}
+			out.push(text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim());
+			page.cleanup();
+		}
+		return out;
+	} finally {
+		await task.destroy();
+	}
+}
+
 export interface PdfSearchHit {
 	page: number;
 	line: number;

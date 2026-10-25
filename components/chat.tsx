@@ -48,7 +48,7 @@ import { PlanBlock, PlanPopup, latestTree } from "@/components/plan-block";
 import { PlanMarginalia, planExists } from "@/components/plan-window";
 import { MermaidOverlay, SessionMermaidContext } from "@/components/session-overlay";
 import { AbortTurnDialog, type AbortMode } from "@/components/abort-turn-dialog";
-import { ArrowRightIcon, DumbbellIcon, WaypointsIcon } from "lucide-react";
+import { ArrowRightIcon, DumbbellIcon, GraduationCapIcon, WaypointsIcon } from "lucide-react";
 import type { PlanBlockData } from "@/src/core";
 import { QuestionDock } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
@@ -203,6 +203,7 @@ export function Chat({
 	initiallyCompacting = false,
 	initialConfigured = false,
 	kind = "teach",
+	course = null,
 }: {
 	chatId: string;
 	title: string;
@@ -224,6 +225,9 @@ export function Chat({
 	 *  it (BYOK, owner 2026-09-22). The server gate stays the truth; this
 	 *  only decides whether the pill rides the composer. */
 	initialConfigured?: boolean;
+	/** Course mode (fork, 2026-10-25): the course this session learns from,
+	 *  fixed at birth. A quiet course tag rides the header; null = ordinary. */
+	course?: { id: string; name: string } | null;
 }) {
 	// Reattach plumbing (background-turn runner wave): the hook holds the
 	// settled terminal's callback — a stable ref assigned below, once
@@ -1296,6 +1300,18 @@ export function Chat({
 				    practice never extracts, so an ever-filling ring with no
 				    run behind it would lie. */}
 					{kind !== "practice" && <CoverageRing chatId={chatId} refreshKey={coverageTick} />}
+					{/* Course mode: the session's course, quiet like the Practice
+					    tag — the learner sees which material grounds the lesson. */}
+					{course && (
+						<span
+							data-testid="course-chip"
+							title={`Grounded in ${course.name}`}
+							className="flex min-w-0 max-w-48 shrink select-none items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+						>
+							<GraduationCapIcon aria-hidden="true" className="size-3 shrink-0" />
+							<span className="truncate">{course.name}</span>
+						</span>
+					)}
 					{/* Practice sessions: no phase arc — a quiet Practice tag
 					    instead of the phase chip. */}
 					{kind === "practice" ? (

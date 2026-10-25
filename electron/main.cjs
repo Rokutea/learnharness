@@ -662,6 +662,14 @@ async function main() {
 	// window grows right. No-op when already wide.
 	// The renderer's first paint can race did-finish-load — it asks for
 	// the current factor itself (mirrors "lh:zoom" pushes).
+	// Course mode (fork, 2026-10-25): the Settings → Courses folder picker.
+	// Resolves the chosen absolute path, or null when cancelled.
+	ipcMain.handle("lh:pick-folder", async (event) => {
+		const win = BrowserWindow.fromWebContents(event.sender);
+		const options = { title: "Choose the course folder", properties: ["openDirectory"] };
+		const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+		return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+	});
 	ipcMain.handle("lh:zoom:get", (event) => BrowserWindow.fromWebContents(event.sender)?.webContents.getZoomFactor() ?? 1);
 	ipcMain.on("lh:expand-window", (event) => {
 		const win = BrowserWindow.fromWebContents(event.sender);

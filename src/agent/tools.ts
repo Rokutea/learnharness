@@ -23,11 +23,23 @@ import { readTool } from "./tools/read.ts";
 import { lsTool } from "./tools/ls.ts";
 import { findTool } from "./tools/find.ts";
 import { grepTool } from "./tools/grep.ts";
+import { courseTools, type CourseRuntime } from "./tools/course.ts";
 import { healToolRecord } from "./tools/heal.ts";
 import type { GraphStore } from "../core/ports.ts";
 
 export { jobTools };
 export type { ProbeDoneContext } from "./tools/probe.ts";
+export type { CourseRuntime } from "./tools/course.ts";
+
+/** THE SOURCE TOOLS (course mode, fork 2026-10-25): an ordinary session
+ *  gets the learner-filesystem set (read/ls/find/grep, home-anchored); a
+ *  course session gets the course tools INSTEAD — the course folder's
+ *  index is its whole window onto material. One switch, shared by all
+ *  three conversation agents (prober, teacher, practitioner). */
+export function sourceTools(course?: CourseRuntime): Record<string, AgentTool<any>> {
+	if (course) return courseTools(course);
+	return { read: readTool, ls: lsTool, find: findTool, grep: grepTool };
+}
 
 /**
  * The agent-split tool composition (docs/probe-teach-split.md §1): the
@@ -276,6 +288,8 @@ export interface ProberToolContext extends ProbeDoneContext {
 	 *  master switch AND the agent.graphTools toggle (settings-resolution).
 	 *  Absent = the gate is closed, no map tools (tests drive this seam). */
 	graphStore?: GraphStore;
+	/** Course mode: present = course tools replace the learner-fs set. */
+	course?: CourseRuntime;
 }
 
 /** The prober's tool set: probe quiz (no nodeId) + ask + the learner-fs
@@ -322,10 +336,8 @@ export function createProberTools(
 				// The learner-filesystem set is always-on (user-decided 2026-09,
 				// sources v1): the prober inspects and LOCATES learner-referenced
 				// files while assessing the edge. Read-only by construction.
-				read: readTool,
-				ls: lsTool,
-				find: findTool,
-				grep: grepTool,
+				// Course sessions swap in the course tools (sourceTools).
+				...sourceTools(ctx.course),
 				// Job dispatch in the probe phase (owner ruling, 2026-09-20):
 				// research + pdf are ALWAYS available in every phase — the
 				// prober can verify facts or read learner PDFs while assessing.
@@ -400,6 +412,8 @@ export interface TeacherToolContext extends PlanToolContext {
 	spawn: (job: JobRecord, input: ResearchInput | DemoInput | VisualInput | PdfInput) => void;
 	/** Retained search-status seam; research dispatch is available keylessly. */
 	searchAvailable?: () => boolean;
+	/** Course mode: present = course tools replace the learner-fs set. */
+	course?: CourseRuntime;
 }
 
 /**
@@ -452,11 +466,9 @@ export function createTeacherTools(
 			// The learner-filesystem set is always-on (user-decided 2026-09,
 			// sources v1): the teacher locates and reads learner-referenced
 			// files on its own terms — nothing auto-injects. Read-only by
-			// construction (fs-shared.ts).
-			read: readTool,
-			ls: lsTool,
-			find: findTool,
-			grep: grepTool,
+			// construction (fs-shared.ts). Course sessions swap in the
+			// course tools (sourceTools).
+			...sourceTools(ctx.course),
 			...planTools(ctx),
 			...jobTools({ chatId: ctx.chatId, jobStore: ctx.jobStore, spawn: ctx.spawn, searchAvailable: ctx.searchAvailable }),
 		},

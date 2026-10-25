@@ -33,6 +33,7 @@ import { providerEventNote } from "../agent/provider-events.ts";
 import { effectiveSettings, stores } from "./stores.ts";
 import { searchAvailable, searchProvider } from "./search.ts";
 import { providerKeyPresent } from "./keys.ts";
+import { coursePromptFor, courseRuntimeFor } from "./courses.ts";
 import {
 	extractionEnabled,
 	graphToolsEnabled,
@@ -100,6 +101,10 @@ const jobRunner = createJobRunner({
 	// null = honestly unavailable; the dispatch-level drop (below) uses the
 	// same signal so keyless servers never see the research tool at all.
 	searchProvider,
+	// Course mode (fork, 2026-10-25): a course session's research runs the
+	// course researcher and its pdf jobs stay inside the course folder —
+	// resolved per job from the chat record's courseId.
+	courseForChat: (chatId) => courseRuntimeFor(stores.chatStore.getChat(chatId)?.courseId),
 });
 /** The app's ONE extraction pipeline instance — both front doors share it:
  *  quiz-triggered session runs (turn-service) and notes imports
@@ -373,6 +378,12 @@ export async function handleChatInput(
 		commitStaged: () => { stores.chatStore.saveMessages(chatId, merged); persistBaseCount = merged.length; },
 		restoreAutomatic: (automaticIds, retainedIds) => restoreUncommittedAutomatic(chatId, constructed, automaticIds, retainedIds),
 	});
+	// COURSE MODE (fork, 2026-10-25): a session linked to a course swaps
+	// the learner-fs tools for the course tools and composes the grounding
+	// fragment + course context into the prompt. A courseId whose course
+	// was deleted degrades to an ordinary session (logged, never a crash).
+	const course = courseRuntimeFor(record.courseId) ?? undefined;
+	if (record.courseId && !course) console.warn(`[chat ${chatId}] course ${record.courseId} not found — running as an ordinary session`);
 	const agentOpts: AgentBuildOptions = {
 		engine,
 		callPurpose,
@@ -387,6 +398,7 @@ export async function handleChatInput(
 		// point as the tool delta — the agent layer composes the system
 		// prompt fresh per turn, swapping in any enabled override segments.
 		promptSwitches: effective.agent.prompts,
+		...(course ? { course: coursePromptFor(course) } : {}),
 	};
 	// PRACTICE BRANCH (owner design, 2026-10-04): a kind:"practice"
 	// session builds the practitioner from turn 1 — no prober→teacher
@@ -416,6 +428,7 @@ export async function handleChatInput(
 							searchAvailable,
 						},
 						...(graphToolsEnabled(effective) ? { graph: { chatStore: stores.chatStore, graphStore: stores.graphStore } } : {}),
+						course,
 					},
 					agentOpts,
 				)
@@ -429,6 +442,7 @@ export async function handleChatInput(
 						// The registry drop's signal (2026-09-20): no live engine
 						// = no research tool in the teacher's registry.
 						searchAvailable,
+						course,
 					},
 					agentOpts,
 				)
@@ -447,6 +461,7 @@ export async function handleChatInput(
 						// knowledge graph through tools when the gate opens —
 						// graph master switch AND the agent.graphTools toggle.
 						...(graphToolsEnabled(effective) ? { graphStore: stores.graphStore } : {}),
+						course,
 					},
 					agentOpts,
 				);

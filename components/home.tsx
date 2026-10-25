@@ -7,6 +7,7 @@ import { GraphView } from "@/components/graph-view";
 import { MinimalHome } from "@/components/minimal-home";
 import { SetupDialog } from "@/components/setup-dialog";
 import { ComposerActions, NodePickerControl } from "@/components/composer-actions";
+import { CoursePickerControl, useSessionCourse } from "@/components/course-picker";
 import { useStrongKeyless, useZeroKeys, ZeroKeysPill } from "@/components/setup-cta";
 import { DictationBar, joinDictation, useDictation } from "@/components/dictation";
 import { useFieldCycle } from "@/components/field-cycle";
@@ -93,6 +94,8 @@ export function Home({
 	 *  the composer opens the picker; the picks seed the opening prompt).
 	 *  Not enforcing any input format — the picks are a convenience. */
 	const [mode, setMode] = useState<"teach" | "practice">("teach");
+	// Course mode (fork, 2026-10-25): the session-to-be's course.
+	const sessionCourse = useSessionCourse();
 	const [practiceProps, setPracticeProps] = useState<{ id: string; name: string; statement: string }[]>([]);
 	const [chainSelectOpen, setChainSelectOpen] = useState(false);
 	// The chain table is CONTROLLED off this id set (the lifted pick).
@@ -144,6 +147,7 @@ export function Home({
 					title: t,
 					...(mode === "practice" ? { kind: "practice" } : {}),
 					...(practiceProps.length > 0 ? { graphContext: { propositions: practiceProps } } : {}),
+					...(sessionCourse.courseId ? { courseId: sessionCourse.courseId } : {}),
 				}),
 			});
 			const { id } = (await res.json()) as { id: string };
@@ -219,6 +223,14 @@ export function Home({
 					    shows the pick HINT so the affordance is discoverable;
 					    teaching mode with nothing picked renders nothing. */}
 					<ComposerActions
+						course={
+							<CoursePickerControl
+								courses={sessionCourse.courses}
+								courseId={sessionCourse.courseId}
+								onChange={sessionCourse.setCourseId}
+								onOpen={sessionCourse.refresh}
+							/>
+						}
 						picker={(practiceProps.length > 0 || mode === "practice") && (
 							<NodePickerControl
 								count={practiceProps.length}

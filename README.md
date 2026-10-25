@@ -32,6 +32,8 @@ Instead of just giving you an explanation, it uses your answers and thinking to 
 
 The agent can also research questions in the background, create visual explanations, and build interactive demonstrations.
 
+**Course mode.** Point LearnHarness at a folder of your course's PDFs and notes, pick that course when you start a session, and the agents teach from that material first: course terminology and notation, the course's language, and citations to file and page instead of web research. See [course mode](docs/courses.md).
+
 ## Knowledge that carries forward
 
 What you are taught accumulates as propositions and reasoning chains: individual claims and the premises that lead to them. The graph shows this structure, with links back to the source sessions. You can also import notes.

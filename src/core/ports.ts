@@ -25,6 +25,8 @@ import type {
 	SessionCheckpoint,
 	TurnUsage,
 	NotesSource,
+	Course,
+	CourseIndex,
 } from "./contracts.ts";
 import type { UserSettings } from "./settings.ts";
 
@@ -34,7 +36,7 @@ export interface ChatStore {
 	/** Create a session record (persisted immediately). */
 	/** Create a session record; kind "practice" marks a practice session
 	 *  (absent = teach, the default). */
-	createChat(title: string, kind?: "practice"): ChatRecord;
+	createChat(title: string, kind?: "practice", courseId?: string): ChatRecord;
 	/** The full record, or null if unknown id / corrupt file. */
 	getChat(id: string): ChatRecord | null;
 	/** All sessions, newest activity first (the sidebar's list view). */
@@ -220,3 +222,24 @@ export interface AuthStore {
 	deleteAuthVar(name: string): void;
 }
 
+
+// ─── CourseStore — course mode (fork feature, 2026-10-25; data/courses) ─────
+// The course rows (one read-modify-write JSON list), each course's
+// extracted-text index, and its glossary markdown. The course service
+// (src/server/courses.ts) is the only writer.
+
+export type CoursePatch = Partial<Omit<Course, "id" | "createdAt">>;
+
+export interface CourseStore {
+	listCourses(): Course[];
+	getCourse(id: string): Course | null;
+	createCourse(init: { name: string; folder: string }): Course;
+	/** Merge patch; a key set to undefined clears it. Null when absent. */
+	updateCourse(id: string, patch: CoursePatch): Course | null;
+	/** Removes the row, the index, and the glossary. */
+	deleteCourse(id: string): boolean;
+	readIndex(id: string): CourseIndex | null;
+	writeIndex(id: string, index: CourseIndex): void;
+	readGlossary(id: string): string | null;
+	writeGlossary(id: string, markdown: string): void;
+}

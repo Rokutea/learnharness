@@ -40,7 +40,20 @@ const PROMPTS_DIR = path.join(PATHS.root, "src", "agent", "prompts");
  *  truth contract, and the thinking-fields doctrine are ONE law across
  *  every agent. The question/confidence/file mechanics stay out
  *  (practice has no such tools). */
-const PRACTICE_SHARED_FRAGMENTS = ["10-voice.md", "15-accuracy.md", "16-mental-model.md", "40-formatting.md"];
+const PRACTICE_SHARED_FRAGMENTS = ["10-voice.md", "15-accuracy.md", "16-mental-model.md", "35-course-grounding.md", "40-formatting.md"];
+
+/** COURSE MODE (fork, 2026-10-25): the course-grounding fragment composes
+ *  ONLY into course sessions, and there it REPLACES the learner-files
+ *  fragment (course sessions carry course tools, not read/ls/find/grep).
+ *  Both stay ordinary segments for listing and overrides; the swap is
+ *  composeInstructions' (teacher-agent.ts) — see courseSegmentFilter. */
+export const COURSE_SEGMENT = "shared/35-course-grounding.md";
+export const LEARNER_FILES_SEGMENT = "shared/30-learner-files.md";
+
+/** Which segments compose for a session with / without a course. */
+export function courseSegmentFilter(courseActive: boolean): (segmentPath: string) => boolean {
+	return courseActive ? (p) => p !== LEARNER_FILES_SEGMENT : (p) => p !== COURSE_SEGMENT;
+}
 
 /** Absolute path for an override file (unchecked — validate first). */
 function overrideFileFor(segmentPath: string): string {
