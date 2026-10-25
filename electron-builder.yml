@@ -187,8 +187,12 @@ publish:
   # from a private repo are impossible, and a token baked into the app
   # would be a leak. desktop:dist passes no --publish flag, so builds never
   # upload; publishing happens at release time (GH_TOKEN + --publish).
+  # Fork (2026-10-25): the feed is the FORK's releases, never upstream's —
+  # an installed course-mode build must not auto-update to an upstream
+  # release that lacks course mode. No release on the fork = no update
+  # (the updater logs the empty feed and the app keeps working).
   - provider: github
-    owner: amosblomqvist
+    owner: Rokutea
     repo: learnharness
     # All three CI jobs contribute assets; only the owner publishes it.
     releaseType: draft
