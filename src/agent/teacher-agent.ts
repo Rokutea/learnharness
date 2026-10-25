@@ -5,7 +5,8 @@ import { providerEventObserver } from "./provider-events.ts";
 import type { Usage } from "@earendil-works/pi-ai";
 import { PATHS } from "../../config.ts";
 import { APP_IDENTITY, piEngineFor, type PiEngine } from "./models.ts";
-import { effectivePromptSegments } from "./prompt-segments.ts";
+import { courseSegmentFilter, effectivePromptSegments } from "./prompt-segments.ts";
+import { renderCourseContext, type CoursePromptContext } from "./courses/prompt.ts";
 import {
 	askUserQuestionTool,
 	createProberTools,
@@ -71,10 +72,19 @@ export type AgentKind = "prober" | "teacher" | "practice";
  *  tests/prompt-overrides.test.ts). Overrides are a static-file read
  *  through config paths, not request state — the store import carries no
  *  chat/job machinery. */
-export function composeInstructions(kind: AgentKind, switches?: Record<string, boolean>): string {
-	const segments = effectivePromptSegments(kind, switches ?? {});
-	return segments
-		.map((s) => (s.enabled ? s.overrideText! : s.sourceText))
+export function composeInstructions(
+	kind: AgentKind,
+	switches?: Record<string, boolean>,
+	course?: CoursePromptContext,
+): string {
+	// COURSE MODE (fork, 2026-10-25): the grounding fragment composes only
+	// with a course (replacing the learner-files fragment), and the
+	// session's course context — name, files, glossary — closes the prompt.
+	const keep = courseSegmentFilter(course !== undefined);
+	const segments = effectivePromptSegments(kind, switches ?? {}).filter((s) => keep(s.path));
+	const texts = segments.map((s) => (s.enabled ? s.overrideText! : s.sourceText));
+	if (course) texts.push(renderCourseContext(course));
+	return texts
 		.map((t) => t.trim())
 		.filter(Boolean)
 		.join("\n\n---\n\n");
@@ -120,6 +130,11 @@ export interface AgentBuildOptions {
 	 *  fresh per turn, honoring enabled overrides (switch on + file
 	 *  exists); absent → the cached pure-source composition. */
 	promptSwitches?: Record<string, boolean>;
+	/** COURSE MODE (fork, 2026-10-25): the session's course snapshot —
+	 *  present = the grounding fragment + the course context compose into
+	 *  the prompt (fresh per turn). The course TOOLS ride the tool
+	 *  contexts, not this option. */
+	course?: CoursePromptContext;
 	/** Native conversation identity: the existing persisted chat id, reused
 	 * across reconstructed prober, teacher, and practice Agents.
 	 * Debug: when set AND LH_PROVIDER_EVENTS=1, raw provider stream events
@@ -175,9 +190,10 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 	// ("practice" is not a ModelRole) honest about that.
 	const engine = opts.engine ?? piEngineFor(kind as "prober" | "teacher");
 	const stopper = makeQuestionStopper();
-	const systemPrompt = opts.promptSwitches
-		? composeInstructions(kind, opts.promptSwitches)
-		: composedInstructions[kind]!;
+	const systemPrompt =
+		opts.promptSwitches || opts.course
+			? composeInstructions(kind, opts.promptSwitches, opts.course)
+			: composedInstructions[kind]!;
 	// Debug recorder (owner, 2026-10-04): raw provider events when
 	// LH_PROVIDER_EVENTS=1 and the caller handed a chatId; undefined is
 	// the normal no-observer path (tests, env-off).

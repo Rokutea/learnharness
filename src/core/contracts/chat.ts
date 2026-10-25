@@ -52,6 +52,11 @@ export interface ChatRecord {
 	extractions?: ExtractionRunUsage[];
 	/** Per-chat model/thinking overrides for the conversation agents. */
 	settings?: ChatSettings;
+	/** COURSE MODE (fork feature, 2026-10-25): the course this session is
+	 *  grounded in (contracts/courses.ts), chosen at creation and fixed for
+	 *  the session's life. Absent = an ordinary session (web research, the
+	 *  learner's whole home directory). */
+	courseId?: string;
 	/** SCHEMA STAMP (schema-versioning wave, owner 2026-10-10): LAZY v1 —
 	 *  existing records stay unstamped (absence reads as v1); every write
 	 *  stamps the current version. A record stamped NEWER than this build
@@ -275,6 +280,8 @@ export interface ChatSummary {
 	 *  summary spread (the picker never needs it from here; the full record
 	 *  is its source). */
 	settings?: ChatSettings;
+	/** The session's course (record field, via the summary spread). */
+	courseId?: string;
 }
 
 /** The sidebar's session row: a summary + live liveness. The chats list

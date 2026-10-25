@@ -184,6 +184,7 @@ describe("the source-derived segment list", () => {
 				"shared/20-question-tools.md",
 				"shared/25-confidence.md",
 				"shared/30-learner-files.md",
+				"shared/35-course-grounding.md",
 				"shared/40-formatting.md",
 			],
 		);
@@ -208,6 +209,10 @@ describe("the source-derived segment list", () => {
 		// Tool MECHANICS are shared; question METHODOLOGY is phase-owned.
 		assert.equal(prober.some((s) => s.path.startsWith("teacher/")), false);
 		assert.equal(teacher.some((s) => s.path.startsWith("prober/")), false);
+		// Course mode (fork, 2026-10-25): the grounding fragment is listed
+		// (overridable like any segment) for every agent; composeInstructions
+		// only composes it for a course session (courseSegmentFilter).
+		assert.equal(teacher.some((s) => s.path === "shared/35-course-grounding.md" && s.shared), true);
 		// README and other non-numeric files never load.
 		assert.equal(allSegmentPaths().some((p) => p.includes("README")), false);
 	});
@@ -251,12 +256,14 @@ describe("composeInstructions: override honoring + the byte-identical source pat
 	it("switches-less composition is byte-identical to the pre-refactor loader", () => {
 		// The plain loader, rebuilt inline: base + the agent's own
 		// fragments + the shared/ appendix (the 2026-09-27 reorder),
-		// trimmed, empties dropped, joined with the separator.
+		// trimmed, empties dropped, joined with the separator. Course mode
+		// (fork, 2026-10-25): the course-grounding fragment composes only
+		// for a course session, so the course-less path skips it.
 		const oldLoader = (kind: "prober" | "teacher") => {
 			const fragmentsOf = (dir: string) =>
 				fs
 					.readdirSync(dir)
-					.filter((f) => /^\d+-[\w.-]+\.md$/.test(f))
+					.filter((f) => /^\d+-[\w.-]+\.md$/.test(f) && f !== "35-course-grounding.md")
 					.sort()
 					.map((f) => fs.readFileSync(path.join(dir, f), "utf-8").trim())
 					.filter(Boolean);

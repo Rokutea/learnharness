@@ -28,6 +28,9 @@ import type { ChatStore, JobStore } from "../../core/ports.ts";
 import { runDemoBuilder } from "./demo-builder.ts";
 import { runPdfReaderAgent } from "./pdf-reader.ts";
 import { runResearcherAgent } from "./researcher.ts";
+import { runCourseResearcherAgent } from "./course-researcher.ts";
+import type { CourseRuntime } from "../tools/course.ts";
+import { pathToFileURL } from "node:url";
 import { runVisualMaker } from "./visual-maker.ts";
 
 /**
@@ -91,6 +94,12 @@ export interface JobRunnerDeps {
 	 *  Injected because the agent layer may not read the key store; absent
 	 *  in tests that inject engines directly (test engines never owe a key). */
 	providerKeyMissing?: (provider: string, tier: ModelSlotName) => ProviderKeyMissing | null;
+	/** COURSE MODE (fork, 2026-10-25): the course runtime of a job's chat,
+	 *  or null for an ordinary session. A course session's research job
+	 *  runs the COURSE researcher (course tools only, no web), and its pdf
+	 *  job may only open files inside the course folder. Resolved per job
+	 *  (the composition root reads the chat record's courseId). */
+	courseForChat?: (chatId: string) => CourseRuntime | null;
 }
 
 export interface JobRunner {
@@ -354,6 +363,13 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			.filter(Boolean)
 			.join("\n\n");
 
+		// Course mode: the course researcher replaces the web researcher.
+		const course = deps.courseForChat?.(job.chatId) ?? null;
+		if (course) {
+			await runCourseResearchJob(jobId, model, prompt, course, loop);
+			return;
+		}
+
 		const fetchedUrls: string[] = [];
 		// Per-job PDF dir (researcher PDF wave, 2026-10-07): web_fetch_pdf
 		// downloads land here; every pdf tool is scoped to it; it dies with
@@ -392,6 +408,42 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			await finishJob(jobId, { brief: `Research failed: ${reason}`, sources: [] });
 		} finally {
 			await fs.rm(pdfDir, { recursive: true, force: true });
+		}
+	}
+
+	/** The course-session research run (course mode): same result shape and
+	 *  delivery as web research; sources are the course pages the
+	 *  researcher actually read, as file links. */
+	async function runCourseResearchJob(
+		jobId: string,
+		model: PiEngine | undefined,
+		prompt: string,
+		course: CourseRuntime,
+		loop: LoopContext,
+	): Promise<void> {
+		const reads: Array<{ path: string; pages: string }> = [];
+		try {
+			jobStore.updateJob(jobId, { activity: "researching the course" });
+			const brief = await runCourseResearcherAgent(prompt, course, {
+				engine: model,
+				abortSignal: loop.abortSignal,
+				chatId: loop.chatId,
+				onUsage: (usage) => loop.onUsage(piUsageToStep(usage)),
+				onToolStart: (toolName, args) => {
+					const input = args as { query?: string; path?: string; pages?: string } | undefined;
+					if (toolName === "course_read" && typeof input?.path === "string") {
+						reads.push({ path: input.path, pages: typeof input.pages === "string" ? input.pages : "" });
+					}
+					jobStore.updateJob(jobId, { activity: courseActivityLine(toolName, input) });
+				},
+			});
+			if (!brief.trim()) throw new Error("the researcher produced no text");
+			await finishJob(jobId, { brief: brief.trim(), sources: courseSources(course, reads) });
+		} catch (err) {
+			if (loop.abortSignal.aborted) return;
+			const reason = err instanceof Error ? err.message : String(err);
+			if (stillRunning(jobId)) jobStore.updateJob(jobId, { error: reason });
+			await finishJob(jobId, { brief: `Research failed: ${reason}`, sources: [] });
 		}
 	}
 
@@ -483,13 +535,23 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 		const { job } = ctx;
 
 		const input = (passedInput ?? resolveInput(job, passedInput)) as PdfToolInput | undefined;
-		const path = typeof input?.path === "string" && input.path.trim() ? input.path.trim() : "";
+		const requested = typeof input?.path === "string" && input.path.trim() ? input.path.trim() : "";
 		const question = typeof input?.question === "string" ? input.question : "";
+		// Course mode: the reader opens course files only — relative paths
+		// resolve against the course folder, anything outside it refuses.
+		const course = deps.courseForChat?.(job.chatId) ?? null;
+		const path = course ? coursePdfPath(course.course.folder, requested) : requested;
+		if (course && path === null) {
+			const reason = `"${requested}" is outside the course folder — this session reads course files only`;
+			if (stillRunning(jobId)) jobStore.updateJob(jobId, { error: reason });
+			await finishJob(jobId, { path: requested, question, brief: `PDF failed: ${reason}`, pagesRead: [], pagesConsulted: [] });
+			return;
+		}
 
 		try {
 			jobStore.updateJob(jobId, { activity: "reading pdf" });
 			const result = await runPdfReaderAgent(
-				{ path, question },
+				{ path: path ?? requested, question },
 			{
 				engine: model,
 				abortSignal: loop.abortSignal,
@@ -505,7 +567,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			if (loop.abortSignal.aborted) return;
 			const reason = err instanceof Error ? err.message : String(err);
 			if (stillRunning(jobId)) jobStore.updateJob(jobId, { error: reason });
-			await finishJob(jobId, { path, question, brief: `PDF failed: ${reason}`, pagesRead: [], pagesConsulted: [] });
+			await finishJob(jobId, { path: path ?? requested, question, brief: `PDF failed: ${reason}`, pagesRead: [], pagesConsulted: [] });
 		}
 	}
 
@@ -533,6 +595,43 @@ function activityLine(toolName: string, input: { query?: string; url?: string } 
 	if (toolName === "web_search") return `web_search: "${input?.query ?? ""}"`;
 	if (toolName === "web_fetch") return `web_fetch: ${hostOf(input?.url)}`;
 	return toolName;
+}
+
+/** The course researcher's activity line: `course_search: "query"` / `course_read: file 3-4`. */
+function courseActivityLine(toolName: string, input: { query?: string; path?: string; pages?: string } | undefined): string {
+	if (toolName === "course_search") return `course_search: "${input?.query ?? ""}"`;
+	if (toolName === "course_read") return `course_read: ${input?.path ?? ""} ${input?.pages ?? ""}`.trim();
+	return toolName;
+}
+
+/** Course research sources: each file the researcher read, once, as a
+ *  file link (first page read as the anchor). */
+function courseSources(course: CourseRuntime, reads: ReadonlyArray<{ path: string; pages: string }>): ResearchResult["sources"] {
+	const index = course.index();
+	const sources: ResearchResult["sources"] = [];
+	const seen = new Set<string>();
+	for (const read of reads) {
+		const file = index?.files.find((f) => f.path === read.path) ?? null;
+		const rel = file?.path ?? read.path;
+		const key = `${rel}|${read.pages}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		const firstPage = /\d+/.exec(read.pages)?.[0];
+		const absolute = path.join(course.course.folder, ...rel.split("/"));
+		const anchor = file?.kind === "pdf" && firstPage ? `#page=${firstPage}` : "";
+		const unit = file?.kind === "markdown" ? "§" : "p.";
+		sources.push({ title: read.pages ? `${rel}, ${unit} ${read.pages}` : rel, url: `${pathToFileURL(absolute).href}${anchor}` });
+	}
+	return sources.slice(0, 10);
+}
+
+/** Resolve a pdf job's path inside the course folder; null = outside it. */
+export function coursePdfPath(folder: string, requested: string): string | null {
+	const root = path.resolve(folder);
+	const resolved = path.isAbsolute(requested) ? path.resolve(requested) : path.resolve(root, requested);
+	const rel = path.relative(root, resolved);
+	if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return null;
+	return resolved;
 }
 
 function hostOf(url: string | undefined): string {

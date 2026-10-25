@@ -226,6 +226,9 @@ export const ROLE_SLOT: Readonly<Record<ModelRole, ModelSlotName>> = {
 	auditor: "cheap",
 	visualMaker: "vision",
 	pdfReader: "vision",
+	// Course mode (fork, 2026-10-25): the course glossary pass — bulk
+	// term extraction over the whole course, a cheap-tier job.
+	glossaryMaker: "cheap",
 };
 
 /** General settings — app-level behavior. Version DISPLAY and plans login
